@@ -1,0 +1,295 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SALES
+  VIEWER
+}
+
+enum CustomerStatus {
+  LEAD
+  CONTACTED
+  QUALIFIED
+  CUSTOMER
+  CHURNED
+}
+
+enum DealStage {
+  NEW
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  ZALO
+  MEETING
+  NOTE
+}
+
+enum TaskStatus {
+  TODO
+  DOING
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EmailStatus {
+  SENT
+  OPENED
+  CLICKED
+  FAILED
+}
+
+model Organization {
+  id          String            @id @default(cuid())
+  name        String
+  members     User[]
+  customers   Customer[]
+  deals       Deal[]
+  activities  Activity[]
+  tasks       Task[]
+  emailLogs   EmailLog[]
+  zaloLinks   ZaloIntegration[]
+  auditLogs   AuditLog[]
+  settings    CrmSetting[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+
+  @@index([deletedAt])
+}
+
+model User {
+  id                String         @id @default(cuid())
+  name              String?
+  email             String?        @unique
+  emailVerified     DateTime?
+  image             String?
+  passwordHash      String?
+  role              Role           @default(SALES)
+  organizationId    String?
+  organization      Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  accounts          Account[]
+  sessions          Session[]
+  assignedCustomers Customer[]     @relation("AssignedCustomers")
+  assignedDeals     Deal[]         @relation("AssignedDeals")
+  assignedTasks     Task[]         @relation("AssignedTasks")
+  activities        Activity[]
+  sentEmails        EmailLog[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+
+  @@index([organizationId, role])
+  @@index([deletedAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Customer {
+  id               String            @id @default(cuid())
+  name             String
+  phone            String?
+  email            String?
+  company          String?
+  address          String?
+  source           String?
+  tags             String[]          @default([])
+  status           CustomerStatus    @default(LEAD)
+  assignedToUserId String?
+  assignedTo       User?             @relation("AssignedCustomers", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deals            Deal[]
+  activities       Activity[]
+  tasks            Task[]
+  emailLogs        EmailLog[]
+  zaloIntegration  ZaloIntegration?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, phone])
+  @@index([organizationId, status, source])
+  @@index([organizationId, assignedToUserId])
+  @@index([organizationId, deletedAt])
+}
+
+model Deal {
+  id                String        @id @default(cuid())
+  title             String
+  value             Decimal       @db.Decimal(14, 2)
+  stage             DealStage     @default(NEW)
+  probability       Int           @default(20)
+  expectedCloseDate DateTime?
+  customerId        String
+  customer          Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedToUserId  String?
+  assignedTo        User?         @relation("AssignedDeals", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  @@index([organizationId, stage])
+  @@index([organizationId, assignedToUserId])
+  @@index([customerId])
+  @@index([deletedAt])
+}
+
+model Activity {
+  id             String        @id @default(cuid())
+  type           ActivityType
+  content        String        @db.Text
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, type])
+}
+
+model Task {
+  id                String        @id @default(cuid())
+  title             String
+  description       String?       @db.Text
+  dueDate           DateTime?
+  status            TaskStatus    @default(TODO)
+  priority          TaskPriority  @default(MEDIUM)
+  assignedToUserId  String?
+  assignedTo        User?         @relation("AssignedTasks", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  relatedCustomerId String?
+  relatedCustomer   Customer?     @relation(fields: [relatedCustomerId], references: [id], onDelete: SetNull)
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, assignedToUserId])
+  @@index([relatedCustomerId])
+}
+
+model EmailLog {
+  id             String       @id @default(cuid())
+  subject        String
+  body           String       @db.Text
+  status         EmailStatus  @default(SENT)
+  sentAt         DateTime?
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, status])
+}
+
+model ZaloIntegration {
+  id             String       @id @default(cuid())
+  zaloUserId     String
+  lastMessageAt  DateTime?
+  customerId     String       @unique
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, zaloUserId])
+  @@index([organizationId, lastMessageAt])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  actorUserId    String?
+  actor          User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+}
+
+model CrmSetting {
+  id             String       @id @default(cuid())
+  key            String
+  value          Json
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
