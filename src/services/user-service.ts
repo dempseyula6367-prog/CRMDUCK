@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { AppError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +27,61 @@ export async function listUsers(user: CurrentUser) {
     },
     orderBy: [{ role: "asc" }, { name: "asc" }]
   });
+}
+
+export async function createUser(
+  actor: CurrentUser,
+  input: {
+    name: string;
+    email: string;
+    password: string;
+    role: Role;
+  }
+) {
+  assertCanManageUsers(actor);
+  const organizationId = requireOrganization(actor);
+  const email = input.email.toLowerCase();
+
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true }
+  });
+
+  if (existing) {
+    throw new AppError(409, "Email này đã có tài khoản trong hệ thống.");
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const created = await prisma.user.create({
+    data: {
+      name: input.name,
+      email,
+      passwordHash,
+      role: input.role,
+      organizationId
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      role: true,
+      createdAt: true
+    }
+  });
+
+  await createAuditLog(actor, {
+    action: "USER_CREATED",
+    entityType: "User",
+    entityId: created.id,
+    after: {
+      name: created.name,
+      email: created.email,
+      role: created.role
+    }
+  });
+
+  return created;
 }
 
 export async function updateUserRole(

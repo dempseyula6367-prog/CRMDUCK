@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Save, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,16 @@ export function SettingsClient() {
     wonLabel: "",
     lostLabel: ""
   });
+  const [userForm, setUserForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "SALES" as Role
+  });
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createUserMessage, setCreateUserMessage] = useState<string | null>(
+    null
+  );
 
   const usersQuery = useQuery({
     queryKey: ["settings-users"],
@@ -69,6 +79,33 @@ export function SettingsClient() {
     }
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<UserLite>("/api/settings/users", {
+        method: "POST",
+        body: JSON.stringify(userForm)
+      }),
+    onMutate: () => {
+      setCreateUserError(null);
+      setCreateUserMessage(null);
+    },
+    onSuccess: () => {
+      setUserForm({
+        name: "",
+        email: "",
+        password: "",
+        role: "SALES"
+      });
+      setCreateUserMessage("Đã thêm người dùng.");
+      queryClient.invalidateQueries({ queryKey: ["settings-users"] });
+    },
+    onError: (error) => {
+      setCreateUserError(
+        error instanceof Error ? error.message : "Không thêm được người dùng."
+      );
+    }
+  });
+
   const updateSettingsMutation = useMutation({
     mutationFn: () =>
       apiFetch<SystemSettings>("/api/settings/system", {
@@ -101,6 +138,90 @@ export function SettingsClient() {
           <div className="border-b border-border p-4">
             <h2 className="text-base font-semibold">User & phân quyền</h2>
           </div>
+          <form
+            className="grid gap-3 border-b border-border p-4 lg:grid-cols-[1fr_1fr_1fr_160px_auto]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createUserMutation.mutate();
+            }}
+          >
+            <div className="space-y-2">
+              <Label>Tên người dùng</Label>
+              <Input
+                value={userForm.name}
+                autoComplete="name"
+                onChange={(event) =>
+                  setUserForm((value) => ({
+                    ...value,
+                    name: event.target.value
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={userForm.email}
+                autoComplete="email"
+                onChange={(event) =>
+                  setUserForm((value) => ({
+                    ...value,
+                    email: event.target.value
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Mật khẩu</Label>
+              <Input
+                type="password"
+                value={userForm.password}
+                autoComplete="new-password"
+                onChange={(event) =>
+                  setUserForm((value) => ({
+                    ...value,
+                    password: event.target.value
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select
+                value={userForm.role}
+                onChange={(event) =>
+                  setUserForm((value) => ({
+                    ...value,
+                    role: event.target.value as Role
+                  }))
+                }
+              >
+                {roles.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button
+              type="submit"
+              className="self-end"
+              disabled={createUserMutation.isPending}
+            >
+              <UserPlus className="h-4 w-4" />
+              Thêm
+            </Button>
+            {(createUserError || createUserMessage) && (
+              <p
+                className={`text-sm lg:col-span-5 ${
+                  createUserError ? "text-danger" : "text-primary"
+                }`}
+              >
+                {createUserError ?? createUserMessage}
+              </p>
+            )}
+          </form>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">

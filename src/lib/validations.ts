@@ -14,6 +14,13 @@ export const registerSchema = z.object({
   organizationName: z.string().min(2).max(120).optional()
 });
 
+export const createUserSchema = z.object({
+  name: z.string().min(2).max(120),
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+  role: z.enum(["ADMIN", "MANAGER", "SALES", "VIEWER"]).default("SALES")
+});
+
 export const forgotPasswordSchema = z.object({
   email: z.string().email()
 });
